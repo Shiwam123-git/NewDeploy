@@ -1,59 +1,58 @@
 pipeline {
-    agent any 
-    tool{
-        maven "maven3.9"
-        jdk "jdk17"
+    agent any
+    tools {
+        maven "Maven3.9"
+        jdk "JDK17"
     }
 
     environment {
-        
-        image_name = '577811233724.dkr.ecr.us-east-1.amazonaws.com/nginx-app:latest'
+        image_name = '577811233724.dkr.ecr.us-east-1.amazonaws.com/nginx-app'
         registry_url = 'https://577811233724.dkr.ecr.us-east-1.amazonaws.com/nginx-app'
     }
 
-    stages  {
-        stage('Checkout Source'){
+    stages {
+        stage('Checkout Source') {
             steps {
-            git branch: 'main', url: ' '
-            }
-        }   
-        stage ("build the code"){
-            steps {
-                sh 'mvn install -DskipTests'
-            }
-            post{
-                echo "archive the artifacts"
-                archiveArtifacts artifacts: '**/target/*.war'
+                git branch: 'main', url: 'https://github.com/Shiwam123-git/NewDeploy.git'
             }
         }
-        stage ('unit test'){
-            steps {
-                sh 'mvn test'
-            }
-        }
-        stage ('Build Docker Image'){
+        
+       stage('Build Docker Image') {
             steps {
                 script {
-                    dockerImage = docker.build($image_name + "$BUILD_NUMBER",".dockerfile")
+                    dockerImage = docker.build("${image_name}:${BUILD_NUMBER}", "./nginx")
                 }
             }
         }
-        stage ('Push Docker Image to ECR'){
+        stage('Login to ECR') {
+             steps {
+             sh '''
+        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 577811233724.dkr.ecr.us-east-1.amazonaws.com
+        '''
+            }
+    }
+
+
+        stage('Push Docker Image to ECR') {
             steps {
                 script {
-                    docker.withRegistry( $registry_url , 'ecr:us-east-1:aws-credentials') {
-                        dockerImage.push("$BUILD_NUMBER")
+                    docker.withRegistry("${registry_url}") {
+                        dockerImage.push("${BUILD_NUMBER}")
                         dockerImage.push("latest")
                     }
                 }
             }
-
         }
-        stage ('Remove Unused Docker Images'){
+
+        stage('Remove Docker Image') {
             steps {
-                sh 'docker rmi -f $(docker images -a -q)'
+                sh "docker rmi -f ${image_name}:${BUILD_NUMBER}"
             }
         }
-
-}
+        stage('Deploy over kubernetes') {
+            steps {
+                sh 'kubectl set image deployment/nginx-deployment nginx-container=577811233724.dkr.ecr.us-east-1.amazonaws.com/nginx-app:${BUILD_NUMBER} --record'
+            }
+        }
+    }
 }
