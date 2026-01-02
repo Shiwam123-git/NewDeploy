@@ -19,7 +19,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    dockerImage = docker.build("${ECR_REPO}:${IMAGE_TAG}", "./nginx")
+                    dockerImage = docker.build("${ECR_REPO}:${IMAGE_TAG}", "./nginx2.0")
                 }
             }
         }
