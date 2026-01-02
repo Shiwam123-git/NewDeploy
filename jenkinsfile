@@ -54,19 +54,21 @@ pipeline {
             steps {
                 sh '''
                 cd yaml
-                kubectl apply -f service.yaml
+                kubectl apply -f service-nginx.yaml
                 '''
             }
         }
 
         stage('Deploy to EKS') {
             steps {
-                sh '''
-                kubectl set image deployment/nginx-deployment \
-                nginx-container=${ECR_REPO}:${IMAGE_TAG}
-
-                kubectl rollout status deployment/nginx-deployment
-                '''
+                dir('yaml') { // Ensure deployment file is in the yaml folder
+                    sh """
+                    kubectl apply -f deployment.yaml || true
+                    kubectl set image deployment/nginx-deployment \
+                        nginx-container=${ECR_REPO}:${IMAGE_TAG} || true
+                    kubectl rollout status deployment/nginx-deployment
+                    """
+                }
             }
         }
     }
