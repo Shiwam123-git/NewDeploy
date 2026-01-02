@@ -6,8 +6,10 @@ pipeline {
     }
 
     environment {
-        image_name = '577811233724.dkr.ecr.us-east-1.amazonaws.com/nginx-app'
-        registry_url = 'https://577811233724.dkr.ecr.us-east-1.amazonaws.com/nginx-app'
+        image_name = '577811233724.dkr.ecr.us-east-1.amazonaws.com/dockerimg'
+        registry_url = 'https://577811233724.dkr.ecr.us-east-1.amazonaws.com/dockerimg'
+        AWS_REGION = "us-east-1" 
+        CLUSTER_NAME = "my-eks-cluster"
     }
 
     stages {
@@ -49,10 +51,18 @@ pipeline {
                 sh "docker rmi -f ${image_name}:${BUILD_NUMBER}"
             }
         }
-        stage('Deploy over kubernetes') {
-            steps {
-                sh 'kubectl set image deployment/nginx-deployment nginx-container=577811233724.dkr.ecr.us-east-1.amazonaws.com/nginx-app:${BUILD_NUMBER} --record'
-            }
+        stage('Update kubeconfig') {
+             steps {
+                 sh ''' aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME} ''' 
+                 } 
+                }
+        stage('Deploy to EKS') { 
+            steps { sh ''' sed -i "s|IMAGE_PLACEHOLDER|${ECR_REPO}:${IMAGE_TAG}|g" deployment.yaml 
+            kubectl apply -f deployment.yaml 
+            kubectl apply -f service.yaml '''
+             } 
         }
+      
     }
+
 }
