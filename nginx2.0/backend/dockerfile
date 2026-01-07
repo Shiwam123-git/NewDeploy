@@ -2,10 +2,14 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+# Copy only package.json
+COPY package.json ./
+
+# Install dependencies
 RUN npm install --production
 
-COPY app.js .
+# Copy your app file
+COPY app.js ./
 
 EXPOSE 3000
 CMD ["node", "app.js"]
