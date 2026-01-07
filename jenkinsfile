@@ -2,9 +2,12 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = "us-east-1"
+        AWS_REGION   = "us-east-1"
         CLUSTER_NAME = "my-eks-cluster"
-        ECR_REPO = "577811233724.dkr.ecr.us-east-1.amazonaws.com/dockerimg"
+
+        FRONTEND_REPO = "577811233724.dkr.ecr.us-east-1.amazonaws.com/dockerimg"
+        BACKEND_REPO  = "577811233724.dkr.ecr.us-east-1.amazonaws.com/backend"
+
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
@@ -12,36 +15,64 @@ pipeline {
 
         stage('Checkout Source') {
             steps {
-                git branch: 'main', url: 'https://github.com/Shiwam123-git/NewDeploy.git'
+                git branch: 'main',
+                    url: 'https://github.com/Shiwam123-git/NewDeploy.git'
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    dockerImage = docker.build("${ECR_REPO}:${IMAGE_TAG}", "./nginx2.0")
-                }
-            }
-        }
-
+        /* -------------------- LOGIN TO ECR -------------------- */
         stage('Login to ECR') {
             steps {
                 sh '''
-                aws ecr get-login-password --region us-east-1 \
+                aws ecr get-login-password --region ${AWS_REGION} \
                 | docker login --username AWS --password-stdin 577811233724.dkr.ecr.us-east-1.amazonaws.com
                 '''
             }
         }
 
-        stage('Push Image to ECR') {
+        /* -------------------- BUILD BACKEND -------------------- */
+        stage('Build Backend Image') {
             steps {
                 script {
-                    dockerImage.push("${IMAGE_TAG}")
-                    dockerImage.push("latest")
+                    backendImage = docker.build(
+                        "${BACKEND_REPO}:${IMAGE_TAG}",
+                        "./nginx2.0/backend"
+                    )
                 }
             }
         }
 
+        stage('Push Backend Image') {
+            steps {
+                script {
+                    backendImage.push("${IMAGE_TAG}")
+                    backendImage.push("backend:latest")
+                }
+            }
+        }
+
+        /* -------------------- BUILD FRONTEND -------------------- */
+        stage('Build Frontend Image') {
+            steps {
+                script {
+                    frontendImage = docker.build(
+                        "${FRONTEND_REPO}:${IMAGE_TAG}",
+                        "./nginx2.0"
+                    )
+                }
+            }
+        }
+
+        stage('Push Frontend Image') {
+            steps {
+                script {
+                    frontendImage.push("${IMAGE_TAG}")
+                    frontendImage.push("fortend:latest")
+                }
+            }
+        }
+
+        /* -------------------- KUBECONFIG -------------------- */
         stage('Update kubeconfig') {
             steps {
                 sh '''
@@ -50,26 +81,59 @@ pipeline {
             }
         }
 
-        stage('Deploy Service (LoadBalancer)') {
+        /* -------------------- DB SECRET -------------------- */
+        stage('Deploy DB Secret') {
             steps {
                 sh '''
-                cd yaml
-                kubectl apply -f service-nginx.yaml
+                kubectl apply -f yaml/postgres-secret.yaml
                 '''
             }
         }
 
-        stage('Deploy to EKS') {
+        /* -------------------- DEPLOY BACKEND -------------------- */
+        stage('Deploy Backend') {
             steps {
-                dir('yaml') { // Ensure deployment file is in the yaml folder
-                    sh """
-                    kubectl apply -f deployment.yaml || true
-                    kubectl set image deployment/nginx-deployment \
-                        nginx-container=${ECR_REPO}:${IMAGE_TAG} || true
-                    kubectl rollout status deployment/nginx-deployment
-                    """
-                }
+                sh '''
+                kubectl apply -f nginx2.0/backend/backend-deployment.yaml
+                kubectl apply -f nginx2.0/backend/backend-service.yaml
+
+                kubectl set image deployment/backend-deployment \
+                  backend-container=${BACKEND_REPO}:${IMAGE_TAG}
+
+                kubectl rollout status deployment/backend-deployment
+                '''
             }
+        }
+
+        /* -------------------- DEPLOY FRONTEND -------------------- */
+        stage('Deploy Frontend Service') {
+            steps {
+                sh '''
+                kubectl apply -f yaml/service-nginx.yaml
+                '''
+            }
+        }
+
+        stage('Deploy Frontend Deployment') {
+            steps {
+                sh '''
+                kubectl apply -f yaml/deployment.yaml
+
+                kubectl set image deployment/nginx-deployment \
+                  nginx-container=${FRONTEND_REPO}:${IMAGE_TAG}
+
+                kubectl rollout status deployment/nginx-deployment
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Backend + Frontend deployed successfully!"
+        }
+        failure {
+            echo " Pipeline failed. Check logs."
         }
     }
 }
