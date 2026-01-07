@@ -32,15 +32,17 @@ pipeline {
 
         /* -------------------- BUILD BACKEND -------------------- */
         stage('Build Backend Image') {
-            steps {
-                script {
-                    backendImage = docker.build(
-                        "${BACKEND_REPO}:${IMAGE_TAG}",
-                        "./nginx2.0/backend"
-                    )
-                }
-            }
-        }
+              steps {
+                sh 'ls -l ./nginx2.0/backend' // Debug
+               script {
+                   backendImage = docker.build(
+                     "${BACKEND_REPO}:${IMAGE_TAG}",
+                          "./nginx2.0/backend"
+                )
+               }
+          }
+      }
+
 
         stage('Push Backend Image') {
             steps {
